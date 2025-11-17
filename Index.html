@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gerador de Prompts por Imagem (Grátis)</title>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; margin: 24px; color:#111; }
+    .container { max-width:900px; margin:0 auto; }
+    header { display:flex; gap:16px; align-items:center; margin-bottom:12px; }
+    img { max-width:100%; border-radius:8px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+    .controls { display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
+    button { padding:8px 12px; border-radius:8px; border:1px solid #ddd; background:#fff; cursor:pointer; }
+    .prompts { margin-top:16px; display:flex; gap:12px; flex-direction:column; }
+    .prompt { background:#f8f8fc; padding:12px; border-radius:8px; border:1px solid #eee; display:flex; justify-content:space-between; gap:12px; align-items:center; }
+    pre { margin:0; white-space:pre-wrap; word-wrap:break-word; font-family:inherit; }
+    .loader { opacity:.7; font-size:14px; }
+    .color-swatch { width:28px; height:28px; border-radius:6px; border:1px solid #ccc; display:inline-block; vertical-align:middle; margin-left:8px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Gerador de Prompts por Imagem (Grátis)</h1>
+    <div style="margin-left:auto;font-size:13px;color:#666">Roda no seu navegador — sem servidor</div>
+  </header>
+
+  <input id="file" type="file" accept="image/*" />
+  <div class="controls">
+    <button id="analyzeBtn">Analisar imagem</button>
+    <div id="status" class="loader"></div>
+  </div>
+
+  <div id="previewArea" style="display:none;">
+    <h3>Imagem</h3>
+    <img id="preview" alt="Preview" />
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+
+    <h3>Resultados</h3>
+    <div id="results">
+      <div><strong>Objetos detectados:</strong> <span id="objects">—</span></div>
+      <div><strong>Top labels (mobilenet):</strong> <span id="labels">—</span></div>
+      <div><strong>Cor dominante:</strong> <span id="colorText">—</span> <span id="colorSwatch" class="color-swatch"></span></div>
+    </div>
+
+    <div class="prompts" id="promptsContainer"></div>
+  </div>
+</div>
+
+<!-- TensorFlow.js and models -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+
+<script>
+  const fileInput = document.getElementById('file');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const status = document.getElementById('status');
+  const previewArea = document.getElementById('previewArea');
+  const previewImg = document.getElementById('preview');
+  const hiddenCanvas = document.getElementById('hiddenCanvas');
+  const objectsSpan = document.getElementById('objects');
+  const labelsSpan = document.getElementById('labels');
+  const colorText = document.getElementById('colorText');
+  const colorSwatch = document.getElementById('colorSwatch');
+  const promptsContainer = document.getElementById('promptsContainer');
+
+  let cocoModel = null;
+  let mobilenetModel = null;
+  let currentImage = null;
+
+  async function loadModels() {
+    status.textContent = 'Carregando modelos (pode demorar alguns segundos)...';
+    cocoModel = await cocoSsd.load();
+    mobilenetModel = await mobilenet.load();
+    status.textContent = 'Modelos prontos.';
+  }
+
+  loadModels().catch(err => { console.error(err); status.textContent='Erro carregando modelos.'; });
+
+  fileInput.addEventListener('change', (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    previewImg.src = url;
+    previewArea.style.display = 'block';
+    currentImage = previewImg;
+    // clear previous
+    objectsSpan.textContent = '—';
+    labelsSpan.textContent = '—';
+    colorText.textContent = '—';
+    colorSwatch.style.background = 'transparent';
+    promptsContainer.innerHTML = '';
+  });
+
+  analyzeBtn.addEventListener('click', async () => {
+    if (!currentImage || !currentImage.src) { alert('Escolha uma imagem antes.'); return; }
+    if (!cocoModel || !mobilenetModel) { alert('Modelos ainda carregando — aguarde.'); return; }
+    status.textContent = 'Analisando imagem...';
+    await new Promise(r => setTimeout(r, 150)); // UI
+    try {
+      // 1) object detection
+      const detections = await cocoModel.detect(currentImage);
+      const topObjects = detections
+        .filter(d => d.score > 0.35)
+        .slice(0,8)
+        .map(d => d.class);
+      // unique, ordered
+      const uniqueObjs = [...new Set(topObjects)];
+      objectsSpan.textContent = uniqueObjs.length ? uniqueObjs.join(', ') : 'Nenhum objeto claro detectado';
+
+      // 2) mobilenet labels (classification)
+      const mResult = await mobilenetModel.classify(currentImage);
+      const topLabels = mResult.slice(0,5).map(r => r.className);
+      labelsSpan.textContent = topLabels.join(', ');
+
+      // 3) dominant color
+      const domColor = getDominantColor(currentImage);
+      colorText.textContent = domColor.hex + ' (rgb ' + domColor.rgb.join(',') + ')';
+      colorSwatch.style.background = domColor.hex;
+
+      // 4) create prompts
+      const prompts = generatePrompts(uniqueObjs, topLabels, domColor);
+      renderPrompts(prompts);
+
+      status.textContent = 'Análise concluída.';
+    } catch (e) {
+      console.error(e);
+      status.textContent = 'Erro durante a análise.';
+    }
+  });
+
+  function getDominantColor(img) {
+    const canvas = hiddenCanvas;
+    const w = 160, h = Math.round(img.naturalHeight * (160 / img.naturalWidth));
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0,0,w,h).data;
+    // simple quantization: reduce to buckets and count
+    const counts = {};
+    for (let i=0;i<data.length;i+=4){
+      const r = Math.round(data[i]/24)*24;
+      const g = Math.round(data[i+1]/24)*24;
+      const b = Math.round(data[i+2]/24)*24;
+      const key = `${r},${g},${b}`;
+      counts[key] = (counts[key]||0) + 1;
+    }
+    let best=null, bestCount=0;
+    for (const k in counts){
+      if (counts[k] > bestCount){ bestCount = counts[k]; best = k; }
+    }
+    const rgb = best.split(',').map(x=>parseInt(x));
+    const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+    return { rgb, hex };
+  }
+  function rgbToHex(r,g,b){
+    return "#" + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+
+  function generatePrompts(objects, labels, colorObj){
+    const objPhrase = objects.length ? objects.slice(0,5).join(', ') : labels.slice(0,3).join(', ');
+    // Templates
+    const templates = [
+      `Foto realista de ${objPhrase}, iluminação suave, alta resolução, composição limpa, cor dominante ${colorObj.hex}.`,
+      `Ilustração estilizada de ${objPhrase}, estilo editorial, fundos simples, paleta centrada em ${colorObj.hex}.`,
+      `Prompt para IA: "${objPhrase} -- detailed, photorealistic, 4k, vivid colors, emphasis on ${colorObj.hex} tones."`,
+      `Cena minimalista com ${objPhrase}. Foco nítido, bokeh no fundo, tons próximos de ${colorObj.hex}.`,
+      `Descrição curta: ${objPhrase}. Paleta: ${colorObj.hex}. Use 35mm, shallow depth of field.`
+    ];
+    // Add a variant that includes top labels
+    const labelStr = labels.slice(0,3).join(', ');
+    templates.push(`Tags: ${labelStr}. Objetos: ${objPhrase}. Cor: ${colorObj.hex}.`);
+    return templates;
+  }
+
+  function renderPrompts(prompts){
+    promptsContainer.innerHTML = '';
+    prompts.forEach((p, i) => {
+      const div = document.createElement('div');s
+      div.className = 'prompt';
+      const pre = document.createElement('pre');
+      pre.textContent = p;
+      const btn = document.createElement('button');
+      btn.textContent = 'Copiar';
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(p).then(()=> {
+          btn.textContent = 'Copiado!';
+          setTimeout(()=> btn.textContent = 'Copiar', 1500);
+        }).catch(()=> alert('Não foi possível copiar.'));
+      });
+      div.appendChild(pre);
+      div.appendChild(btn);
+      promptsContainer.appendChild(div);
+    });
+  }
+</script>
+</body>
+</html>
+
