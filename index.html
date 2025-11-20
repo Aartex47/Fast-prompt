@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
@@ -85,7 +85,7 @@
     previewImg.src = url;
     previewArea.style.display = 'block';
     currentImage = previewImg;
-    // clear previous
+
     objectsSpan.textContent = '—';
     labelsSpan.textContent = '—';
     colorText.textContent = '—';
@@ -96,30 +96,28 @@
   analyzeBtn.addEventListener('click', async () => {
     if (!currentImage || !currentImage.src) { alert('Escolha uma imagem antes.'); return; }
     if (!cocoModel || !mobilenetModel) { alert('Modelos ainda carregando — aguarde.'); return; }
+
     status.textContent = 'Analisando imagem...';
-    await new Promise(r => setTimeout(r, 150)); // UI
+    await new Promise(r => setTimeout(r, 150)); 
+
     try {
-      // 1) object detection
       const detections = await cocoModel.detect(currentImage);
       const topObjects = detections
         .filter(d => d.score > 0.35)
         .slice(0,8)
         .map(d => d.class);
-      // unique, ordered
+
       const uniqueObjs = [...new Set(topObjects)];
       objectsSpan.textContent = uniqueObjs.length ? uniqueObjs.join(', ') : 'Nenhum objeto claro detectado';
 
-      // 2) mobilenet labels (classification)
       const mResult = await mobilenetModel.classify(currentImage);
       const topLabels = mResult.slice(0,5).map(r => r.className);
       labelsSpan.textContent = topLabels.join(', ');
 
-      // 3) dominant color
       const domColor = getDominantColor(currentImage);
       colorText.textContent = domColor.hex + ' (rgb ' + domColor.rgb.join(',') + ')';
       colorSwatch.style.background = domColor.hex;
 
-      // 4) create prompts
       const prompts = generatePrompts(uniqueObjs, topLabels, domColor);
       renderPrompts(prompts);
 
@@ -137,7 +135,7 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, w, h);
     const data = ctx.getImageData(0,0,w,h).data;
-    // simple quantization: reduce to buckets and count
+
     const counts = {};
     for (let i=0;i<data.length;i+=4){
       const r = Math.round(data[i]/24)*24;
@@ -146,21 +144,23 @@
       const key = `${r},${g},${b}`;
       counts[key] = (counts[key]||0) + 1;
     }
+
     let best=null, bestCount=0;
     for (const k in counts){
       if (counts[k] > bestCount){ bestCount = counts[k]; best = k; }
     }
+
     const rgb = best.split(',').map(x=>parseInt(x));
     const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
     return { rgb, hex };
   }
+
   function rgbToHex(r,g,b){
     return "#" + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
   }
 
   function generatePrompts(objects, labels, colorObj){
     const objPhrase = objects.length ? objects.slice(0,5).join(', ') : labels.slice(0,3).join(', ');
-    // Templates
     const templates = [
       `Foto realista de ${objPhrase}, iluminação suave, alta resolução, composição limpa, cor dominante ${colorObj.hex}.`,
       `Ilustração estilizada de ${objPhrase}, estilo editorial, fundos simples, paleta centrada em ${colorObj.hex}.`,
@@ -168,7 +168,6 @@
       `Cena minimalista com ${objPhrase}. Foco nítido, bokeh no fundo, tons próximos de ${colorObj.hex}.`,
       `Descrição curta: ${objPhrase}. Paleta: ${colorObj.hex}. Use 35mm, shallow depth of field.`
     ];
-    // Add a variant that includes top labels
     const labelStr = labels.slice(0,3).join(', ');
     templates.push(`Tags: ${labelStr}. Objetos: ${objPhrase}. Cor: ${colorObj.hex}.`);
     return templates;
@@ -176,11 +175,14 @@
 
   function renderPrompts(prompts){
     promptsContainer.innerHTML = '';
+
     prompts.forEach((p, i) => {
-      const div = document.createElement('div');s
+      const div = document.createElement('div');  /* <-- ERRO CORRIGIDO AQUI */
       div.className = 'prompt';
+
       const pre = document.createElement('pre');
       pre.textContent = p;
+
       const btn = document.createElement('button');
       btn.textContent = 'Copiar';
       btn.addEventListener('click', () => {
@@ -189,6 +191,7 @@
           setTimeout(()=> btn.textContent = 'Copiar', 1500);
         }).catch(()=> alert('Não foi possível copiar.'));
       });
+
       div.appendChild(pre);
       div.appendChild(btn);
       promptsContainer.appendChild(div);
@@ -197,4 +200,3 @@
 </script>
 </body>
 </html>
-
