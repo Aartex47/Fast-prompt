@@ -95,55 +95,79 @@ try {
 
   loadModels().catch(err => { console.error(err); status.textContent='Erro carregando modelos.'; });
 
-  fileInput.addEventListener('change', (ev) => {
-    const f = ev.target.files && ev.target.files[0];
-    if (!f) return;
-    const url = URL.createObjectURL(f);
-    previewImg.src = url;
+ fileInput.addEventListener('change', (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+
+  const url = URL.createObjectURL(f);
+  
+  // Aguarda a imagem carregar totalmente
+  previewImg.onload = () => {
     previewArea.style.display = 'block';
     currentImage = previewImg;
 
+    // limpar resultados anteriores
     objectsSpan.textContent = '—';
     labelsSpan.textContent = '—';
     colorText.textContent = '—';
     colorSwatch.style.background = 'transparent';
     promptsContainer.innerHTML = '';
-  });
+  };
 
-  analyzeBtn.addEventListener('click', async () => {
-    if (!currentImage || !currentImage.src) { alert('Escolha uma imagem antes.'); return; }
-    if (!cocoModel || !mobilenetModel) { alert('Modelos ainda carregando — aguarde.'); return; }
+  previewImg.src = url;
+});
 
-    status.textContent = 'Analisando imagem...';
-    await new Promise(r => setTimeout(r, 150)); 
+ analyzeBtn.addEventListener('click', async () => {
+  if (!currentImage || currentImage.naturalWidth === 0) {
+    alert('A imagem ainda está carregando. Tente novamente em 1 segundo.');
+    return;
+  }
 
-    try {
-      const detections = await cocoModel.detect(currentImage);
-      const topObjects = detections
-        .filter(d => d.score > 0.35)
-        .slice(0,8)
-        .map(d => d.class);
+  if (!cocoModel || !mobilenetModel) {
+    alert('Modelos ainda carregando — aguarde.');
+    return;
+  }
 
-      const uniqueObjs = [...new Set(topObjects)];
-      objectsSpan.textContent = uniqueObjs.length ? uniqueObjs.join(', ') : 'Nenhum objeto claro detectado';
+  status.textContent = 'Analisando imagem...';
+  await new Promise(r => setTimeout(r, 200)); 
 
-      const mResult = await mobilenetModel.classify(currentImage);
-      const topLabels = mResult.slice(0,5).map(r => r.className);
-      labelsSpan.textContent = topLabels.join(', ');
+  try {
+    // DETECÇÃO
+    const detections = await cocoModel.detect(currentImage);
 
-      const domColor = getDominantColor(currentImage);
-      colorText.textContent = domColor.hex + ' (rgb ' + domColor.rgb.join(',') + ')';
-      colorSwatch.style.background = domColor.hex;
+    const topObjects = detections
+      .filter(d => d.score > 0.40)
+      .slice(0, 8)
+      .map(d => d.class);
 
-      const prompts = generatePrompts(uniqueObjs, topLabels, domColor);
-      renderPrompts(prompts);
+    const uniqueObjs = [...new Set(topObjects)];
 
-      status.textContent = 'Análise concluída.';
-    } catch (e) {
-      console.error(e);
-      status.textContent = 'Erro durante a análise.';
-    }
-  });
+    objectsSpan.textContent =
+      uniqueObjs.length ? uniqueObjs.join(', ') : 'Nenhum objeto detectado';
+
+    // LABELS
+    const mResult = await mobilenetModel.classify(currentImage);
+    const topLabels = mResult.slice(0, 5).map(r => r.className);
+
+    labelsSpan.textContent =
+      topLabels.length ? topLabels.join(', ') : 'Nenhuma label detectada';
+
+    // COR
+    const domColor = getDominantColor(currentImage);
+    colorText.textContent = `${domColor.hex} (rgb ${domColor.rgb.join(', ')})`;
+    colorSwatch.style.background = domColor.hex;
+
+    // PROMPTS
+    const prompts = generatePrompts(uniqueObjs, topLabels, domColor);
+    renderPrompts(prompts);
+
+    status.textContent = 'Análise concluída.';
+  
+  } catch (e) {
+    console.error(e);
+    status.textContent = 'Erro durante a análise.';
+  }
+});
 
   function getDominantColor(img) {
     const canvas = hiddenCanvas;
@@ -217,4 +241,5 @@ try {
 </script>
 </body>
 </html>
+
 
