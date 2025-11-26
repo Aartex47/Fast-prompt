@@ -71,8 +71,25 @@
 
   async function loadModels() {
     status.textContent = 'Carregando modelos (pode demorar alguns segundos)...';
-    cocoModel = await cocoSsd.load();
-    mobilenetModel = await mobilenet.load();
+    // Forçar fallback caso WebGL falhe
+tf.ENV.set('WEBGL_VERSION', 1);
+tf.ENV.set('HAS_WEBGL', true);
+
+// Carregamento seguro
+try {
+  cocoModel = await cocoSsd.load();
+  mobilenetModel = await mobilenet.load();
+  status.textContent = 'Modelos prontos.';
+} catch (error) {
+  console.warn('WebGL falhou. Usando CPU.', error);
+  await tf.setBackend('cpu');
+  await tf.ready();
+
+  cocoModel = await cocoSsd.load();
+  mobilenetModel = await mobilenet.load();
+
+  status.textContent = 'Modelos prontos (CPU — mais lento).';
+}
     status.textContent = 'Modelos prontos.';
   }
 
@@ -200,3 +217,4 @@
 </script>
 </body>
 </html>
+
