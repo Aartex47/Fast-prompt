@@ -95,7 +95,7 @@ try {
 
   loadModels().catch(err => { console.error(err); status.textContent='Erro carregando modelos.'; });
 
- fileInput.addEventListener('change', (ev) => {
+fileInput.addEventListener('change', (ev) => {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
 
@@ -116,8 +116,7 @@ try {
 
   previewImg.src = url;
 });
-
- analyzeBtn.addEventListener('click', async () => {
+analyzeBtn.addEventListener('click', async () => {
   if (!currentImage || currentImage.naturalWidth === 0) {
     alert('A imagem ainda está carregando. Tente novamente em 1 segundo.');
     return;
@@ -241,5 +240,6 @@ try {
 </script>
 </body>
 </html>
+
 
 
