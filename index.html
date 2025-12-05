@@ -27,6 +27,16 @@
 
   <input id="file" type="file" accept="image/*" />
   <div class="controls">
+    <label for="promptStyle">Estilo do Prompt:</label>
+<select id="promptStyle">
+    <option value="realista">Realista</option>
+    <option value="cinematografico">Cinematográfico</option>
+    <option value="anime">Anime</option>
+    <option value="digital-art">Arte Digital</option>
+    <option value="minimalista">Minimalista</option>
+    <option value="fantasia">Fantasia</option>
+</select>
+<br><br>
     <button id="analyzeBtn">Analisar imagem</button>
     <div id="status" class="loader"></div>
   </div>
@@ -240,6 +250,7 @@ analyzeBtn.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
 
 
 
