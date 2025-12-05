@@ -207,21 +207,23 @@ analyzeBtn.addEventListener('click', async () => {
 
   function rgbToHex(r,g,b){
     return "#" + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
-  }
-
   function generatePrompts(objects, labels, colorObj){
-    const objPhrase = objects.length ? objects.slice(0,5).join(', ') : labels.slice(0,3).join(', ');
-    const templates = [
-      `Foto realista de ${objPhrase}, iluminação suave, alta resolução, composição limpa, cor dominante ${colorObj.hex}.`,
-      `Ilustração estilizada de ${objPhrase}, estilo editorial, fundos simples, paleta centrada em ${colorObj.hex}.`,
-      `Prompt para IA: "${objPhrase} -- detailed, photorealistic, 4k, vivid colors, emphasis on ${colorObj.hex} tones."`,
-      `Cena minimalista com ${objPhrase}. Foco nítido, bokeh no fundo, tons próximos de ${colorObj.hex}.`,
-      `Descrição curta: ${objPhrase}. Paleta: ${colorObj.hex}. Use 35mm, shallow depth of field.`
-    ];
-    const labelStr = labels.slice(0,3).join(', ');
-    templates.push(`Tags: ${labelStr}. Objetos: ${objPhrase}. Cor: ${colorObj.hex}.`);
-    return templates;
-  }
+    const style = document.getElementById("promptStyle")?.value || "realista";
+
+    let styleText = "";
+    if (style === "realista") styleText = "foto realista, ultra-detalhada, iluminação natural";
+    if (style === "cinematografico") styleText = "estilo cinematográfico, luz dramática, tons profundos";
+    if (style === "anime") styleText = "estilo anime, cores vibrantes, traços marcados";
+    if (style === "digital-art") styleText = "arte digital, textura suave, alto nível de detalhes";
+    if (style === "minimalista") styleText = "estilo minimalista, composição limpa, poucos elementos";
+    if (style === "fantasia") styleText = "fantasia épica, atmosfera mágica, iluminação surreal";
+
+    const objPhrase =
+      objects.length ? objects.slice(0, 5).join(", ") : labels.slice(0, 3).join(", ");
+
+    const prompt = `Imagem contendo ${objPhrase}. Estilo: ${styleText}. Cor dominante ${colorObj.hex}.`;
+
+ 
 
   function renderPrompts(prompts){
     promptsContainer.innerHTML = '';
@@ -250,6 +252,7 @@ analyzeBtn.addEventListener('click', async () => {
 </script>
 </body>
 </html>
+
 
 
 
