@@ -26,17 +26,18 @@
   </header>
 
   <input id="file" type="file" accept="image/*" />
+
+  <!-- NOVO: seletor de estilo -->
   <div class="controls">
-    <label for="promptStyle">Estilo do Prompt:</label>
-<select id="promptStyle">
-    <option value="realista">Realista</option>
-    <option value="cinematografico">Cinematográfico</option>
-    <option value="anime">Anime</option>
-    <option value="digital-art">Arte Digital</option>
-    <option value="minimalista">Minimalista</option>
-    <option value="fantasia">Fantasia</option>
-</select>
-<br><br>
+    <select id="promptStyle">
+      <option value="realista">Realista</option>
+      <option value="cinematografico">Cinematográfico</option>
+      <option value="anime">Anime</option>
+      <option value="digital-art">Arte Digital</option>
+      <option value="minimalista">Minimalista</option>
+      <option value="fantasia">Fantasia</option>
+    </select>
+
     <button id="analyzeBtn">Analisar imagem</button>
     <div id="status" class="loader"></div>
   </div>
@@ -81,102 +82,62 @@
 
   async function loadModels() {
     status.textContent = 'Carregando modelos (pode demorar alguns segundos)...';
-    // Forçar fallback caso WebGL falhe
-tf.ENV.set('WEBGL_VERSION', 1);
-tf.ENV.set('HAS_WEBGL', true);
-
-// Carregamento seguro
-try {
-  cocoModel = await cocoSsd.load();
-  mobilenetModel = await mobilenet.load();
-  status.textContent = 'Modelos prontos.';
-} catch (error) {
-  console.warn('WebGL falhou. Usando CPU.', error);
-  await tf.setBackend('cpu');
-  await tf.ready();
-
-  cocoModel = await cocoSsd.load();
-  mobilenetModel = await mobilenet.load();
-
-  status.textContent = 'Modelos prontos (CPU — mais lento).';
-}
+    cocoModel = await cocoSsd.load();
+    mobilenetModel = await mobilenet.load();
     status.textContent = 'Modelos prontos.';
   }
 
   loadModels().catch(err => { console.error(err); status.textContent='Erro carregando modelos.'; });
 
-fileInput.addEventListener('change', (ev) => {
-  const f = ev.target.files && ev.target.files[0];
-  if (!f) return;
-
-  const url = URL.createObjectURL(f);
-  
-  // Aguarda a imagem carregar totalmente
-  previewImg.onload = () => {
+  fileInput.addEventListener('change', (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    previewImg.src = url;
     previewArea.style.display = 'block';
     currentImage = previewImg;
 
-    // limpar resultados anteriores
     objectsSpan.textContent = '—';
     labelsSpan.textContent = '—';
     colorText.textContent = '—';
     colorSwatch.style.background = 'transparent';
     promptsContainer.innerHTML = '';
-  };
+  });
 
-  previewImg.src = url;
-});
-analyzeBtn.addEventListener('click', async () => {
-  if (!currentImage || currentImage.naturalWidth === 0) {
-    alert('A imagem ainda está carregando. Tente novamente em 1 segundo.');
-    return;
-  }
+  analyzeBtn.addEventListener('click', async () => {
+    if (!currentImage || !currentImage.src) { alert('Escolha uma imagem antes.'); return; }
+    if (!cocoModel || !mobilenetModel) { alert('Modelos ainda carregando — aguarde.'); return; }
 
-  if (!cocoModel || !mobilenetModel) {
-    alert('Modelos ainda carregando — aguarde.');
-    return;
-  }
+    status.textContent = 'Analisando imagem...';
+    await new Promise(r => setTimeout(r, 150)); 
 
-  status.textContent = 'Analisando imagem...';
-  await new Promise(r => setTimeout(r, 200)); 
+    try {
+      const detections = await cocoModel.detect(currentImage);
+      const topObjects = detections
+        .filter(d => d.score > 0.35)
+        .slice(0,8)
+        .map(d => d.class);
 
-  try {
-    // DETECÇÃO
-    const detections = await cocoModel.detect(currentImage);
+      const uniqueObjs = [...new Set(topObjects)];
+      objectsSpan.textContent = uniqueObjs.length ? uniqueObjs.join(', ') : 'Nenhum objeto claro detectado';
 
-    const topObjects = detections
-      .filter(d => d.score > 0.40)
-      .slice(0, 8)
-      .map(d => d.class);
+      const mResult = await mobilenetModel.classify(currentImage);
+      const topLabels = mResult.slice(0,5).map(r => r.className);
+      labelsSpan.textContent = topLabels.join(', ');
 
-    const uniqueObjs = [...new Set(topObjects)];
+      const domColor = getDominantColor(currentImage);
+      colorText.textContent = domColor.hex + ' (rgb ' + domColor.rgb.join(',') + ')';
+      colorSwatch.style.background = domColor.hex;
 
-    objectsSpan.textContent =
-      uniqueObjs.length ? uniqueObjs.join(', ') : 'Nenhum objeto detectado';
+      const prompts = generatePrompts(uniqueObjs, topLabels, domColor);
+      renderPrompts(prompts);
 
-    // LABELS
-    const mResult = await mobilenetModel.classify(currentImage);
-    const topLabels = mResult.slice(0, 5).map(r => r.className);
-
-    labelsSpan.textContent =
-      topLabels.length ? topLabels.join(', ') : 'Nenhuma label detectada';
-
-    // COR
-    const domColor = getDominantColor(currentImage);
-    colorText.textContent = `${domColor.hex} (rgb ${domColor.rgb.join(', ')})`;
-    colorSwatch.style.background = domColor.hex;
-
-    // PROMPTS
-    const prompts = generatePrompts(uniqueObjs, topLabels, domColor);
-    renderPrompts(prompts);
-
-    status.textContent = 'Análise concluída.';
-  
-  } catch (e) {
-    console.error(e);
-    status.textContent = 'Erro durante a análise.';
-  }
-});
+      status.textContent = 'Análise concluída.';
+    } catch (e) {
+      console.error(e);
+      status.textContent = 'Erro durante a análise.';
+    }
+  });
 
   function getDominantColor(img) {
     const canvas = hiddenCanvas;
@@ -207,29 +168,35 @@ analyzeBtn.addEventListener('click', async () => {
 
   function rgbToHex(r,g,b){
     return "#" + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
-  function generatePrompts(objects, labels, colorObj){
-    const style = document.getElementById("promptStyle")?.value || "realista";
+  }
 
-    let styleText = "";
-    if (style === "realista") styleText = "foto realista, ultra-detalhada, iluminação natural";
-    if (style === "cinematografico") styleText = "estilo cinematográfico, luz dramática, tons profundos";
-    if (style === "anime") styleText = "estilo anime, cores vibrantes, traços marcados";
-    if (style === "digital-art") styleText = "arte digital, textura suave, alto nível de detalhes";
-    if (style === "minimalista") styleText = "estilo minimalista, composição limpa, poucos elementos";
-    if (style === "fantasia") styleText = "fantasia épica, atmosfera mágica, iluminação surreal";
+  /* ===============================
+     NOVA FUNÇÃO — GERADOR DE PROMPT
+  =============================== */
+  function generatePrompts(objects, labels, colorObj){
+    const style = document.getElementById("promptStyle").value;
+
+    let estilo = "";
+    if (style === "realista") estilo = "foto realista, ultra-detalhada, iluminação natural";
+    if (style === "cinematografico") estilo = "estilo cinematográfico, luz dramática, sombras profundas";
+    if (style === "anime") estilo = "estilo anime, cores vibrantes, traços marcados";
+    if (style === "digital-art") estilo = "arte digital altamente detalhada, textura suave";
+    if (style === "minimalista") estilo = "estilo minimalista, composição limpa, poucos elementos";
+    if (style === "fantasia") estilo = "fantasia épica, atmosfera mágica, luz surreal";
 
     const objPhrase =
       objects.length ? objects.slice(0, 5).join(", ") : labels.slice(0, 3).join(", ");
 
-    const prompt = `Imagem contendo ${objPhrase}. Estilo: ${styleText}. Cor dominante ${colorObj.hex}.`;
+    const prompt = `Imagem contendo ${objPhrase}. Estilo: ${estilo}. Cor dominante ${colorObj.hex}.`;
 
- 
+    return [prompt];
+  }
 
   function renderPrompts(prompts){
     promptsContainer.innerHTML = '';
 
-    prompts.forEach((p, i) => {
-      const div = document.createElement('div');  /* <-- ERRO CORRIGIDO AQUI */
+    prompts.forEach((p) => {
+      const div = document.createElement('div');
       div.className = 'prompt';
 
       const pre = document.createElement('pre');
@@ -241,7 +208,7 @@ analyzeBtn.addEventListener('click', async () => {
         navigator.clipboard.writeText(p).then(()=> {
           btn.textContent = 'Copiado!';
           setTimeout(()=> btn.textContent = 'Copiar', 1500);
-        }).catch(()=> alert('Não foi possível copiar.'));
+        });
       });
 
       div.appendChild(pre);
@@ -252,8 +219,3 @@ analyzeBtn.addEventListener('click', async () => {
 </script>
 </body>
 </html>
-
-
-
-
-
